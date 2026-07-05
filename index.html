@@ -150,6 +150,8 @@
     width: 76px; padding: 6px; border-radius: 6px; border: 1px solid #555;
     background: #222; color: #eee; font-size: 14px;
   }
+  .posbtn { font-size: 13px; padding: 7px 14px; background: #333; color: #ddd; }
+  .posbtn.active { background: var(--accent); color: #fff; font-weight: 700; }
   .srow small { color: #888; }
 
   /* カウントダウン */
@@ -269,9 +271,21 @@
       <span class="val" id="vFont"></span>
     </div>
     <div class="srow">
-      <label>台本エリア高さ</label>
+      <label>台本エリアの大きさ</label>
       <input type="range" id="sPanel" min="25" max="75" step="1">
       <span class="val" id="vPanel"></span>
+    </div>
+    <div class="srow">
+      <label>台本の位置</label>
+      <button class="btn posbtn" data-pos="top">上</button>
+      <button class="btn posbtn" data-pos="left">左</button>
+      <button class="btn posbtn" data-pos="right">右</button>
+      <small>横画面はカメラのある側に</small>
+    </div>
+    <div class="srow">
+      <label>読む位置ガイド</label>
+      <input type="checkbox" id="sGuide">
+      <small>読む位置の目安ライン(黄色)を表示</small>
     </div>
     <div class="srow">
       <label>背景の不透明度</label>
@@ -321,7 +335,8 @@ const $ = id => document.getElementById(id);
 /* ============ 保存データ ============ */
 const DEFAULTS = {
   v: 2, speed: 40, fontSize: 30, panelH: 45, bgOpacity: 55,
-  bgColor: '#000000', textColor: '#ffffff', targetSec: 60, countdown: true
+  bgColor: '#000000', textColor: '#ffffff', targetSec: 60, countdown: true,
+  panelPos: 'top', guide: false
 };
 let settings = { ...DEFAULTS };
 try {
@@ -346,7 +361,7 @@ if (!localStorage.getItem('vp_init')) {
     saveScripts([{
       id: 'sample',
       name: 'サンプル台本(操作の練習用)',
-      text: 'これはサンプルの台本です。\n\n「▶ 練習」を押すと、録画せずにこの文章が自動でスクロールします。\n読みやすい速さになるよう、⚙️設定からスクロール速度と文字サイズを調整してください。\n\n黄色いラインのあたりを読むと、目線がカメラの近くに保たれます。\n\n本番は「⏺ 録画」を押します。カウントダウンのあと、録画とスクロールが同時に始まります。\n\n言い直したいときは「⏪ 少し戻る」、最初からやり直すときは「⏮ 最初へ」。\n終わったら「⏹ 終了」で動画を保存できます。\n\nそれでは、頑張ってください!',
+      text: 'これはサンプルの台本です。\n\n「▶ 練習」を押すと、録画せずにこの文章が自動でスクロールします。\n読みやすい速さになるよう、⚙️設定からスクロール速度と文字サイズを調整してください。\n\n文字はカメラレンズの近くに表示されるので、目線が下がりにくくなっています。\n横画面で使うときは、⚙️設定の「台本の位置」でカメラのある側(左/右)に寄せられます。\n\n本番は「⏺ 録画」を押します。カウントダウンのあと、録画とスクロールが同時に始まります。\n\n言い直したいときは「⏪ 少し戻る」、最初からやり直すときは「⏮ 最初へ」。\n終わったら「⏹ 終了」で動画を保存できます。\n\nそれでは、頑張ってください!',
       updatedAt: Date.now()
     }]);
   }
@@ -457,9 +472,23 @@ function applySettings() {
   ptext.style.color = settings.textColor;
   // 背景が透けているときは、後ろの映像に文字が溶けないよう影を付ける
   ptext.style.textShadow = settings.bgOpacity < 80 ? '0 1px 4px rgba(0,0,0,.8)' : 'none';
-  panel.style.height = settings.panelH + '%';
   panel.style.background = hexToRgba(settings.bgColor, settings.bgOpacity / 100);
-  $('statusRow').style.top = `calc(${settings.panelH}% + 8px)`;
+  // 台本の位置:上(縦画面)/左/右(横画面でカメラが左右にある機種向け)
+  const sr = $('statusRow');
+  if (settings.panelPos === 'top') {
+    Object.assign(panel.style, { top: '0', bottom: 'auto', left: '0', right: '0', width: 'auto', height: settings.panelH + '%' });
+    Object.assign(sr.style, { top: `calc(${settings.panelH}% + 8px)`, left: '0', right: '0' });
+  } else {
+    const side = settings.panelPos === 'left' ? 'left' : 'right';
+    const other = side === 'left' ? 'right' : 'left';
+    const ps = { top: '0', bottom: 'calc(76px + env(safe-area-inset-bottom))', width: settings.panelH + '%', height: 'auto' };
+    ps[side] = '0'; ps[other] = 'auto';
+    Object.assign(panel.style, ps);
+    const ss = { top: '8px' };
+    ss[side] = `calc(${settings.panelH}% + 8px)`; ss[other] = '8px';
+    Object.assign(sr.style, ss);
+  }
+  $('guide').style.display = settings.guide ? '' : 'none';
   $('guide').style.height = Math.round(settings.fontSize * 1.6) + 'px';
   // 文章の始まり/終わりがガイドラインの位置に来るよう余白を確保
   const h = panel.clientHeight;
@@ -471,6 +500,8 @@ function applySettings() {
   $('sFont').value = settings.fontSize;   $('vFont').textContent = settings.fontSize + 'px';
   $('sPanel').value = settings.panelH;    $('vPanel').textContent = settings.panelH + '%';
   $('sOpacity').value = settings.bgOpacity; $('vOpacity').textContent = settings.bgOpacity + '%';
+  $('sGuide').checked = settings.guide;
+  document.querySelectorAll('.posbtn').forEach(b => b.classList.toggle('active', b.dataset.pos === settings.panelPos));
   $('sBg').value = settings.bgColor;
   $('sText').value = settings.textColor;
   $('sTarget').value = settings.targetSec;
@@ -725,6 +756,10 @@ $('btnResetColor').onclick = () => {
 };
 $('sTarget').onchange = e => { settings.targetSec = Math.max(0, Number(e.target.value) || 0); persistSettings(); applySettings(); };
 $('sCount').onchange = e => { settings.countdown = e.target.checked; persistSettings(); };
+$('sGuide').onchange = e => { settings.guide = e.target.checked; persistSettings(); applySettings(); };
+document.querySelectorAll('.posbtn').forEach(b => {
+  b.onclick = () => { settings.panelPos = b.dataset.pos; persistSettings(); applySettings(); };
+});
 
 /* ---- キーボード操作(PC用) ---- */
 window.addEventListener('keydown', e => {
