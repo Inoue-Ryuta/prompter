@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>動画選考プロンプター</title>
+<style>
+  :root {
+    --accent: #2563eb;
+    --danger: #dc2626;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: system-ui, -apple-system, "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Yu Gothic", Meiryo, sans-serif;
+    background: #f4f5f7;
+    overscroll-behavior: none;
+  }
+  .hidden { display: none !important; }
+  button { font-family: inherit; cursor: pointer; }
+
+  /* ===== ホーム画面 ===== */
+  #home { max-width: 640px; margin: 0 auto; padding: 20px 16px 48px; }
+  #home header h1 { font-size: 22px; margin: 0 0 4px; }
+  #home header p { color: #666; font-size: 13px; margin: 0 0 20px; }
+  .card {
+    background: #fff; border-radius: 12px; padding: 14px 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.08); margin-bottom: 12px;
+  }
+  .script-item .s-name { font-weight: 700; font-size: 16px; }
+  .script-item .s-meta { color: #999; font-size: 12px; margin: 2px 0 6px; }
+  .script-item .s-snippet {
+    color: #555; font-size: 13px; margin-bottom: 10px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .s-actions { display: flex; gap: 8px; }
+  .btn {
+    border: 0; border-radius: 8px; padding: 9px 16px; font-size: 14px;
+    background: #e7e9ee; color: #333;
+  }
+  .btn.primary { background: var(--accent); color: #fff; font-weight: 700; }
+  .btn.danger-text { background: none; color: var(--danger); }
+  .btn.wide { width: 100%; padding: 13px; font-size: 15px; }
+  #emptyHint { color: #888; font-size: 14px; text-align: center; padding: 24px 0; }
+
+  /* エディタ */
+  #editor label { display: block; font-size: 13px; color: #555; margin: 10px 0 4px; }
+  #editor input[type=text], #editor textarea {
+    width: 100%; border: 1px solid #ccc; border-radius: 8px;
+    padding: 10px; font-size: 15px; font-family: inherit; background: #fff;
+  }
+  #editor textarea { min-height: 180px; resize: vertical; line-height: 1.6; }
+  .editor-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  #homeHelp { font-size: 12px; color: #777; line-height: 1.7; }
+
+  /* ===== プロンプター画面 ===== */
+  #stage {
+    position: fixed; inset: 0; background: #111; overflow: hidden;
+    user-select: none; -webkit-user-select: none; touch-action: manipulation;
+  }
+  #cam {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: cover; transform: scaleX(-1); background: #111;
+  }
+  #camError {
+    position: absolute; left: 0; right: 0; top: 55%; text-align: center;
+    color: #bbb; font-size: 13px; padding: 0 24px; line-height: 1.7;
+  }
+  #panel {
+    position: absolute; top: 0; left: 0; right: 0; height: 45%;
+    background: rgba(0,0,0,.55); overflow: hidden;
+  }
+  #guide {
+    position: absolute; top: 28%; left: 0; right: 0; height: 48px;
+    background: rgba(255, 196, 0, .28);
+    border-left: 4px solid rgba(255, 160, 0, .95);
+    pointer-events: none; z-index: 2;
+  }
+  #scroller {
+    position: absolute; inset: 0; overflow-y: auto;
+    scrollbar-width: none; -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+  #scroller::-webkit-scrollbar { display: none; }
+  #ptext {
+    white-space: pre-wrap; word-break: break-word;
+    line-height: 1.6; padding-left: 18px; padding-right: 18px;
+    font-size: 30px; color: #fff;
+  }
+  #statusRow {
+    position: absolute; left: 0; right: 0; top: calc(45% + 8px);
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 0 12px; pointer-events: none; z-index: 3;
+  }
+  #recBadge {
+    background: rgba(0,0,0,.55); color: #fff; font-size: 13px; font-weight: 700;
+    padding: 4px 10px; border-radius: 999px; display: flex; align-items: center; gap: 6px;
+  }
+  #recBadge .dot {
+    width: 10px; height: 10px; border-radius: 50%; background: var(--danger);
+    animation: blink 1s infinite;
+  }
+  @keyframes blink { 50% { opacity: .25; } }
+  #timer {
+    background: rgba(0,0,0,.55); color: #fff; font-size: 15px;
+    font-variant-numeric: tabular-nums;
+    padding: 4px 12px; border-radius: 999px; margin-left: auto;
+  }
+  #timer.warn { background: var(--danger); font-weight: 700; }
+
+  /* 操作バー */
+  #controls {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 5;
+    background: rgba(0,0,0,.6); backdrop-filter: blur(6px);
+    padding: 8px 6px calc(8px + env(safe-area-inset-bottom));
+    display: flex; justify-content: space-around; align-items: center;
+  }
+  .cbtn {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    background: none; border: 0; color: #fff; font-size: 11px; padding: 4px 8px;
+    min-width: 56px;
+  }
+  .cbtn .ic { font-size: 24px; line-height: 1; }
+  .cbtn.rec .ic { color: #ff4d4d; }
+  .cbtn:active { opacity: .6; }
+  #idleHint {
+    position: absolute; left: 0; right: 0; bottom: calc(64px + env(safe-area-inset-bottom));
+    text-align: center; color: #fff; font-size: 12px; z-index: 4;
+    text-shadow: 0 1px 3px rgba(0,0,0,.8); padding: 0 12px;
+  }
+
+  /* 設定ドロワー */
+  #settingsDrawer {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 10;
+    background: rgba(20,20,24,.96); color: #eee; border-radius: 16px 16px 0 0;
+    padding: 16px 20px calc(20px + env(safe-area-inset-bottom));
+    max-height: 75%; overflow-y: auto;
+  }
+  #settingsDrawer h2 { font-size: 15px; margin: 0 0 8px; display: flex; justify-content: space-between; }
+  #settingsDrawer h2 button { background: none; border: 0; color: #aaa; font-size: 20px; }
+  .srow { display: flex; align-items: center; gap: 10px; margin: 12px 0; font-size: 13px; }
+  .srow label { flex: 0 0 96px; }
+  .srow input[type=range] { flex: 1; }
+  .srow .val { flex: 0 0 52px; text-align: right; font-variant-numeric: tabular-nums; }
+  .srow input[type=color] { width: 44px; height: 30px; border: 0; padding: 0; background: none; }
+  .srow input[type=number] {
+    width: 76px; padding: 6px; border-radius: 6px; border: 1px solid #555;
+    background: #222; color: #eee; font-size: 14px;
+  }
+  .srow small { color: #888; }
+
+  /* カウントダウン */
+  #countdown {
+    position: absolute; inset: 0; z-index: 20;
+    background: rgba(0,0,0,.45);
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: min(40vh, 40vw); font-weight: 800;
+    text-shadow: 0 4px 24px rgba(0,0,0,.6);
+  }
+
+  /* 保存ダイアログ */
+  #saveDlg {
+    position: absolute; inset: 0; z-index: 30;
+    background: rgba(0,0,0,.75);
+    display: flex; align-items: center; justify-content: center; padding: 16px;
+  }
+  #saveDlg .box {
+    background: #fff; border-radius: 14px; padding: 16px;
+    width: 100%; max-width: 440px;
+  }
+  #saveDlg h2 { font-size: 16px; margin: 0 0 10px; }
+  #saveDlg video { width: 100%; max-height: 40vh; border-radius: 8px; background: #000; }
+  #saveInfo { font-size: 13px; color: #666; margin: 8px 0; }
+  #saveNote { font-size: 12px; color: #888; margin: 8px 0 12px; line-height: 1.6; }
+  .dlg-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .dlg-actions .btn { flex: 1; min-width: 100px; }
+</style>
+</head>
+<body>
+
+<!-- ============ ホーム画面 ============ -->
+<div id="home">
+  <header>
+    <h1>🎬 動画選考プロンプター</h1>
+    <p>台本を選んでプロンプターを起動し、そのまま録画・保存できます</p>
+  </header>
+
+  <div id="scriptList"></div>
+  <div id="emptyHint" class="hidden">台本がまだありません。下のボタンから作成してください。</div>
+
+  <button class="btn primary wide" id="btnNew">＋ 新しい台本を作る</button>
+
+  <div class="card hidden" id="editor">
+    <label for="edName">台本の名前</label>
+    <input type="text" id="edName" placeholder="例:自己PR(60秒)">
+    <label for="edText">本文(ここに貼り付け、または .txt を読み込み)</label>
+    <textarea id="edText" placeholder="ここに台本を貼り付けてください…"></textarea>
+    <input type="file" id="fileIn" accept=".txt,text/plain" hidden>
+    <div class="editor-actions">
+      <button class="btn" id="btnImport">📄 .txtファイルを読み込む</button>
+      <button class="btn primary" id="btnSaveScript">保存</button>
+      <button class="btn" id="btnCancelEdit">キャンセル</button>
+    </div>
+  </div>
+
+  <div class="card" id="homeHelp">
+    <b>使い方</b><br>
+    ① 台本を作成 → 「▶ 開く」でプロンプター画面へ<br>
+    ② カメラ・マイクの許可を求められたら「許可」を選択<br>
+    ③ <b>⏺ 録画</b>:カウントダウン後に録画+スクロール開始/<b>▶ 練習</b>:録画なしでスクロールのみ<br>
+    ④ 終了すると動画を保存・共有できます(動画は端末の外に送信されません)<br>
+    ※ 文字は画面上部(カメラレンズ付近)に半透明で表示されるので、目線が下がりにくく、映り具合も確認できます
+  </div>
+
+  <div class="card" id="phoneHelp">
+    <b>📱 スマホで使うには</b><br>
+    ブラウザの決まりで、カメラを使えるのは「httpsのページ」または「同じ端末の中(localhost)」だけです。そのため、どちらかの方法で開きます:<br><br>
+    <b>方法1(かんたん)</b>:無料ホスティング(GitHub Pages等)にこのHTMLを1つ置き、URLをスマホで開く<br>
+    → 置かれるのは<b>"空のアプリ"だけ</b>。台本・録画した動画・設定がスマホの外に出ることはありません<br><br>
+    <b>方法2(完全ローカル)</b>:HTMLをスマホに保存し、無料のローカルサーバーアプリで開く(ネット接続不要)<br><br>
+    くわしい手順は同じフォルダの「プロンプター使い方.md」を見てください
+  </div>
+</div>
+
+<!-- ============ プロンプター画面 ============ -->
+<div id="stage" class="hidden">
+  <video id="cam" autoplay playsinline muted></video>
+  <div id="camError" class="hidden">
+    カメラを利用できません(権限を確認してください)。<br>
+    プロンプター機能(練習モード)のみ使用できます。
+  </div>
+
+  <div id="panel">
+    <div id="guide"></div>
+    <div id="scroller"><div id="ptext"></div></div>
+  </div>
+
+  <div id="statusRow">
+    <div id="recBadge" class="hidden"><span class="dot"></span>REC</div>
+    <div id="timer">0:00</div>
+  </div>
+
+  <div id="idleHint">▶ 練習 = 録画なし ⏺ 録画 = カウントダウン後に録画開始</div>
+
+  <div id="controls">
+    <button class="cbtn" id="btnHome"><span class="ic">🏠</span>戻る</button>
+    <button class="cbtn" id="btnTop"><span class="ic">⏮</span>最初へ</button>
+    <button class="cbtn" id="btnBack"><span class="ic">⏪</span>少し戻る</button>
+    <button class="cbtn" id="btnPractice"><span class="ic">▶️</span>練習</button>
+    <button class="cbtn rec" id="btnRecord"><span class="ic">⏺</span>録画</button>
+    <button class="cbtn" id="btnPause"><span class="ic">⏸</span>一時停止</button>
+    <button class="cbtn" id="btnStop"><span class="ic">⏹</span>終了</button>
+    <button class="cbtn" id="btnSettings"><span class="ic">⚙️</span>設定</button>
+  </div>
+
+  <div id="settingsDrawer" class="hidden">
+    <h2>設定 <button id="btnCloseSettings">✕</button></h2>
+    <div class="srow">
+      <label>スクロール速度</label>
+      <input type="range" id="sSpeed" min="8" max="150" step="1">
+      <span class="val" id="vSpeed"></span>
+    </div>
+    <div class="srow">
+      <label>文字サイズ</label>
+      <input type="range" id="sFont" min="16" max="60" step="1">
+      <span class="val" id="vFont"></span>
+    </div>
+    <div class="srow">
+      <label>台本エリア高さ</label>
+      <input type="range" id="sPanel" min="25" max="75" step="1">
+      <span class="val" id="vPanel"></span>
+    </div>
+    <div class="srow">
+      <label>背景の不透明度</label>
+      <input type="range" id="sOpacity" min="20" max="100" step="5">
+      <span class="val" id="vOpacity"></span>
+    </div>
+    <div class="srow">
+      <label>背景色 / 文字色</label>
+      <input type="color" id="sBg">
+      <input type="color" id="sText">
+      <button class="btn" id="btnResetColor" style="font-size:12px;padding:6px 10px;">既定に戻す</button>
+    </div>
+    <div class="srow">
+      <label>目標時間(秒)</label>
+      <input type="number" id="sTarget" min="0" max="1800" step="5">
+      <small>0 = 制限なし。残り10秒で赤表示</small>
+    </div>
+    <div class="srow">
+      <label>カウントダウン</label>
+      <input type="checkbox" id="sCount">
+      <small>録画・練習の開始前に 3・2・1 を表示</small>
+    </div>
+    <div class="srow"><small>PCでは:スペース=一時停止/再開、↑↓=手動スクロール、Home=最初へ。マウスホイールやドラッグでも動かせます。</small></div>
+  </div>
+
+  <div id="countdown" class="hidden"></div>
+
+  <div id="saveDlg" class="hidden">
+    <div class="box">
+      <h2>録画が完了しました</h2>
+      <video id="playback" controls playsinline></video>
+      <div id="saveInfo"></div>
+      <div id="saveNote">iPhoneでは「共有」→「ビデオを保存」でカメラロールに保存できます。<br>Android / PC では「保存」でダウンロードされます。</div>
+      <div class="dlg-actions">
+        <button class="btn primary" id="btnDownload">📥 保存</button>
+        <button class="btn" id="btnShare">📤 共有</button>
+        <button class="btn danger-text" id="btnDiscard">破棄</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+
+/* ============ 保存データ ============ */
+const DEFAULTS = {
+  v: 2, speed: 40, fontSize: 30, panelH: 45, bgOpacity: 55,
+  bgColor: '#000000', textColor: '#ffffff', targetSec: 60, countdown: true
+};
+let settings = { ...DEFAULTS };
+try {
+  const stored = JSON.parse(localStorage.getItem('vp_settings') || '{}');
+  // v1(白背景デフォルト)からの移行:色を変更していなければ新デフォルト(暗め半透明)を適用
+  if (!stored.v && (stored.bgColor === undefined || (stored.bgColor === '#ffffff' && stored.textColor === '#111111'))) {
+    delete stored.bgColor; delete stored.textColor; delete stored.bgOpacity;
+  }
+  settings = { ...DEFAULTS, ...stored, v: 2 };
+} catch (e) {}
+function persistSettings() { localStorage.setItem('vp_settings', JSON.stringify(settings)); }
+
+function loadScripts() {
+  try { return JSON.parse(localStorage.getItem('vp_scripts') || '[]'); } catch (e) { return []; }
+}
+function saveScripts(list) { localStorage.setItem('vp_scripts', JSON.stringify(list)); }
+
+// 初回起動時にサンプル台本を用意
+if (!localStorage.getItem('vp_init')) {
+  localStorage.setItem('vp_init', '1');
+  if (loadScripts().length === 0) {
+    saveScripts([{
+      id: 'sample',
+      name: 'サンプル台本(操作の練習用)',
+      text: 'これはサンプルの台本です。\n\n「▶ 練習」を押すと、録画せずにこの文章が自動でスクロールします。\n読みやすい速さになるよう、⚙️設定からスクロール速度と文字サイズを調整してください。\n\n黄色いラインのあたりを読むと、目線がカメラの近くに保たれます。\n\n本番は「⏺ 録画」を押します。カウントダウンのあと、録画とスクロールが同時に始まります。\n\n言い直したいときは「⏪ 少し戻る」、最初からやり直すときは「⏮ 最初へ」。\n終わったら「⏹ 終了」で動画を保存できます。\n\nそれでは、頑張ってください!',
+      updatedAt: Date.now()
+    }]);
+  }
+}
+
+/* ============ ホーム画面 ============ */
+let editingId = null;
+
+function renderList() {
+  const list = loadScripts().sort((a, b) => b.updatedAt - a.updatedAt);
+  const wrap = $('scriptList');
+  wrap.innerHTML = '';
+  $('emptyHint').classList.toggle('hidden', list.length > 0);
+  for (const s of list) {
+    const div = document.createElement('div');
+    div.className = 'card script-item';
+    const d = new Date(s.updatedAt);
+    const meta = `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} 更新・約${s.text.length}文字`;
+    div.innerHTML = `
+      <div class="s-name"></div>
+      <div class="s-meta">${meta}</div>
+      <div class="s-snippet"></div>
+      <div class="s-actions">
+        <button class="btn primary a-open">▶ 開く</button>
+        <button class="btn a-edit">✎ 編集</button>
+        <button class="btn danger-text a-del">削除</button>
+      </div>`;
+    div.querySelector('.s-name').textContent = s.name;
+    div.querySelector('.s-snippet').textContent = s.text.slice(0, 60).replace(/\n/g, ' ');
+    div.querySelector('.a-open').onclick = () => openPrompter(s.id);
+    div.querySelector('.a-edit').onclick = () => openEditor(s.id);
+    div.querySelector('.a-del').onclick = () => {
+      if (confirm(`「${s.name}」を削除しますか?`)) {
+        saveScripts(loadScripts().filter(x => x.id !== s.id));
+        renderList();
+      }
+    };
+    wrap.appendChild(div);
+  }
+}
+
+function openEditor(id) {
+  editingId = id || null;
+  const s = id ? loadScripts().find(x => x.id === id) : null;
+  $('edName').value = s ? s.name : '';
+  $('edText').value = s ? s.text : '';
+  $('editor').classList.remove('hidden');
+  $('btnNew').classList.add('hidden');
+  $('edName').focus();
+}
+function closeEditor() {
+  $('editor').classList.add('hidden');
+  $('btnNew').classList.remove('hidden');
+  editingId = null;
+}
+$('btnNew').onclick = () => openEditor(null);
+$('btnCancelEdit').onclick = closeEditor;
+$('btnSaveScript').onclick = () => {
+  const name = $('edName').value.trim();
+  const text = $('edText').value.trim();
+  if (!text) { alert('本文を入力してください'); return; }
+  const list = loadScripts();
+  if (editingId) {
+    const s = list.find(x => x.id === editingId);
+    if (s) { s.name = name || s.name; s.text = text; s.updatedAt = Date.now(); }
+  } else {
+    list.push({ id: Date.now() + '_' + Math.random().toString(36).slice(2, 7), name: name || '無題の台本', text, updatedAt: Date.now() });
+  }
+  saveScripts(list);
+  closeEditor();
+  renderList();
+};
+
+// .txt 読み込み(UTF-8 → 失敗時は Shift_JIS として再解釈)
+$('btnImport').onclick = () => $('fileIn').click();
+$('fileIn').onchange = async e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const buf = await f.arrayBuffer();
+  let text;
+  try { text = new TextDecoder('utf-8', { fatal: true }).decode(buf); }
+  catch (err) { text = new TextDecoder('shift_jis').decode(buf); }
+  $('edText').value = text;
+  if (!$('edName').value.trim()) $('edName').value = f.name.replace(/\.[^.]+$/, '');
+  e.target.value = '';
+};
+
+/* ============ プロンプター ============ */
+let currentScript = null;
+let mode = 'idle';          // idle | countdown | practice | recording
+let playing = false;        // 自動スクロール中か
+let dragging = false;       // ユーザーが指/マウスでスクロール操作中か
+let posF = 0;               // スクロール位置(小数)
+let tStart = 0;             // セッション開始時刻
+let stream = null;
+let recorder = null, chunks = [], recBlob = null, recDuration = 0;
+let wakeLockObj = null;
+
+const stage = $('stage'), panel = $('panel'), scroller = $('scroller'), ptext = $('ptext');
+
+function hexToRgba(hex, alpha) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+}
+
+function applySettings() {
+  ptext.style.fontSize = settings.fontSize + 'px';
+  ptext.style.color = settings.textColor;
+  // 背景が透けているときは、後ろの映像に文字が溶けないよう影を付ける
+  ptext.style.textShadow = settings.bgOpacity < 80 ? '0 1px 4px rgba(0,0,0,.8)' : 'none';
+  panel.style.height = settings.panelH + '%';
+  panel.style.background = hexToRgba(settings.bgColor, settings.bgOpacity / 100);
+  $('statusRow').style.top = `calc(${settings.panelH}% + 8px)`;
+  $('guide').style.height = Math.round(settings.fontSize * 1.6) + 'px';
+  // 文章の始まり/終わりがガイドラインの位置に来るよう余白を確保
+  const h = panel.clientHeight;
+  const g = Math.round(h * 0.28);
+  ptext.style.paddingTop = g + 'px';
+  ptext.style.paddingBottom = Math.max(0, h - g) + 'px';
+  // 設定UIに現在値を反映
+  $('sSpeed').value = settings.speed;     $('vSpeed').textContent = settings.speed;
+  $('sFont').value = settings.fontSize;   $('vFont').textContent = settings.fontSize + 'px';
+  $('sPanel').value = settings.panelH;    $('vPanel').textContent = settings.panelH + '%';
+  $('sOpacity').value = settings.bgOpacity; $('vOpacity').textContent = settings.bgOpacity + '%';
+  $('sBg').value = settings.bgColor;
+  $('sText').value = settings.textColor;
+  $('sTarget').value = settings.targetSec;
+  $('sCount').checked = settings.countdown;
+}
+
+async function openPrompter(id) {
+  currentScript = loadScripts().find(x => x.id === id);
+  if (!currentScript) return;
+  $('home').classList.add('hidden');
+  stage.classList.remove('hidden');
+  ptext.textContent = currentScript.text;
+  mode = 'idle';
+  playing = false;
+  applySettings();
+  posF = 0; scroller.scrollTop = 0;
+  updateControls();
+  initCamera();
+}
+
+async function initCamera() {
+  if (stream) return;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: true
+    });
+    $('cam').srcObject = stream;
+    $('camError').classList.add('hidden');
+  } catch (e) {
+    $('camError').classList.remove('hidden');
+  }
+}
+
+function closePrompter() {
+  if (mode === 'recording' && !confirm('録画中です。録画を中止して戻りますか?')) return;
+  stopSession(true);
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; $('cam').srcObject = null; }
+  stage.classList.add('hidden');
+  $('home').classList.remove('hidden');
+  renderList();
+}
+$('btnHome').onclick = closePrompter;
+
+/* ---- スクロールエンジン ---- */
+let lastT = performance.now();
+function loop(t) {
+  // rAFが中断(通知・アプリ切替など)から復帰した際にテキストが飛ばないよう dt を制限
+  const dt = Math.min((t - lastT) / 1000, 0.1);
+  lastT = t;
+  if (playing && !dragging) {
+    posF += settings.speed * dt;
+    scroller.scrollTop = posF;
+    const st = scroller.scrollTop;
+    if (Math.abs(st - posF) > 2) posF = st; // 端に到達 or 手動操作とのずれを補正
+    if (st >= scroller.scrollHeight - scroller.clientHeight - 1) {
+      setPlaying(false); // 最後まで到達したらスクロールだけ停止(録画は継続)
+    }
+  }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+scroller.addEventListener('scroll', () => { if (!playing || dragging) posF = scroller.scrollTop; });
+scroller.addEventListener('pointerdown', () => { dragging = true; });
+window.addEventListener('pointerup', () => { if (dragging) { dragging = false; posF = scroller.scrollTop; } });
+window.addEventListener('pointercancel', () => { if (dragging) { dragging = false; posF = scroller.scrollTop; } });
+
+function clampPos(v) {
+  return Math.max(0, Math.min(v, scroller.scrollHeight - scroller.clientHeight));
+}
+function nudge(px) { posF = clampPos(posF + px); scroller.scrollTop = posF; }
+function toTop() { posF = 0; scroller.scrollTop = 0; }
+
+function setPlaying(v) {
+  playing = v;
+  const b = $('btnPause');
+  b.innerHTML = v ? '<span class="ic">⏸</span>一時停止' : '<span class="ic">▶️</span>再開';
+}
+
+/* ---- セッション制御 ---- */
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function runCountdown() {
+  const cd = $('countdown');
+  cd.classList.remove('hidden');
+  for (let n = 3; n >= 1; n--) {
+    cd.textContent = n;
+    await sleep(1000);
+  }
+  cd.classList.add('hidden');
+}
+
+async function startSession(withRec) {
+  if (mode !== 'idle') return;
+  if (withRec) {
+    if (!stream) { alert('カメラが使えないため録画できません。練習モードをご利用ください。'); return; }
+    if (typeof MediaRecorder === 'undefined') { alert('このブラウザは録画に対応していません。'); return; }
+    toTop(); // 録画は必ず先頭から
+  }
+  mode = 'countdown';
+  updateControls();
+  if (settings.countdown) await runCountdown();
+  if (withRec) {
+    try { startRecorder(); }
+    catch (e) { alert('録画を開始できませんでした: ' + e.message); mode = 'idle'; updateControls(); return; }
+  }
+  mode = withRec ? 'recording' : 'practice';
+  tStart = Date.now();
+  setPlaying(true);
+  updateControls();
+  requestWakeLock();
+}
+
+function stopSession(silent) {
+  if (mode === 'recording' && recorder && recorder.state !== 'inactive') {
+    recDuration = (Date.now() - tStart) / 1000;
+    if (silent) { recorder.onstop = null; chunks = []; }
+    recorder.stop(); // 非同期に onstop → 保存ダイアログ
+  }
+  mode = 'idle';
+  setPlaying(false);
+  releaseWakeLock();
+  updateControls();
+  $('timer').classList.remove('warn');
+  $('timer').textContent = '0:00';
+}
+
+$('btnPractice').onclick = () => startSession(false);
+$('btnRecord').onclick = () => startSession(true);
+$('btnStop').onclick = () => stopSession(false);
+$('btnPause').onclick = () => { if (mode === 'practice' || mode === 'recording') setPlaying(!playing); };
+$('btnTop').onclick = toTop;
+$('btnBack').onclick = () => nudge(-settings.fontSize * 1.6 * 3); // 約3行戻る
+
+function updateControls() {
+  const idle = mode === 'idle';
+  const active = mode === 'practice' || mode === 'recording';
+  $('btnHome').classList.toggle('hidden', !idle);
+  $('btnPractice').classList.toggle('hidden', !idle);
+  $('btnRecord').classList.toggle('hidden', !idle);
+  $('btnPause').classList.toggle('hidden', !active);
+  $('btnStop').classList.toggle('hidden', !active);
+  $('btnBack').classList.toggle('hidden', !active);
+  $('idleHint').classList.toggle('hidden', !idle);
+  $('recBadge').classList.toggle('hidden', mode !== 'recording');
+}
+
+/* ---- タイマー ---- */
+function fmt(s) { s = Math.max(0, Math.floor(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
+setInterval(() => {
+  if (mode !== 'practice' && mode !== 'recording') return;
+  const el = (Date.now() - tStart) / 1000;
+  const t = $('timer');
+  if (settings.targetSec > 0) {
+    const rem = settings.targetSec - el;
+    t.textContent = rem >= 0 ? `${fmt(el)} / 残り ${fmt(rem)}` : `${fmt(el)} / 超過 +${fmt(-rem)}`;
+    t.classList.toggle('warn', rem <= 10);
+  } else {
+    t.textContent = fmt(el);
+    t.classList.remove('warn');
+  }
+}, 200);
+
+/* ---- 録画 ---- */
+function pickMime() {
+  const cands = [
+    'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+    'video/mp4',
+    'video/webm;codecs=vp9,opus',
+    'video/webm'
+  ];
+  return cands.find(c => MediaRecorder.isTypeSupported(c)) || '';
+}
+
+function startRecorder() {
+  chunks = [];
+  const mime = pickMime();
+  recorder = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 4000000 } : undefined);
+  recorder.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+  recorder.onstop = () => {
+    recBlob = new Blob(chunks, { type: recorder.mimeType || 'video/webm' });
+    chunks = [];
+    showSaveDlg();
+  };
+  recorder.onerror = e => { alert('録画エラーが発生しました'); stopSession(true); };
+  recorder.start(1000);
+}
+
+function recFileName() {
+  const d = new Date();
+  const p = n => String(n).padStart(2, '0');
+  const ts = `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`;
+  const safe = (currentScript ? currentScript.name : 'recording').replace(/[\\/:*?"<>|\s]+/g, '_');
+  const ext = recBlob && recBlob.type.includes('mp4') ? 'mp4' : 'webm';
+  return `${safe}_${ts}.${ext}`;
+}
+
+function showSaveDlg() {
+  const url = URL.createObjectURL(recBlob);
+  $('playback').src = url;
+  const mb = (recBlob.size / 1048576).toFixed(1);
+  const ext = recBlob.type.includes('mp4') ? 'MP4' : 'WebM(提出先がMP4指定の場合は変換が必要なことがあります)';
+  $('saveInfo').textContent = `長さ 約${fmt(recDuration)} ・ サイズ ${mb}MB ・ 形式 ${ext}`;
+  $('saveDlg').classList.remove('hidden');
+}
+function closeSaveDlg() {
+  $('saveDlg').classList.add('hidden');
+  const v = $('playback');
+  v.pause();
+  if (v.src) { URL.revokeObjectURL(v.src); v.removeAttribute('src'); v.load(); }
+  recBlob = null;
+}
+$('btnDownload').onclick = () => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(recBlob);
+  a.download = recFileName();
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 3000);
+};
+$('btnShare').onclick = async () => {
+  const file = new File([recBlob], recFileName(), { type: recBlob.type });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file] }); } catch (e) { /* キャンセル時は何もしない */ }
+  } else {
+    alert('このブラウザは共有に対応していません。「保存」をご利用ください。');
+  }
+};
+$('btnDiscard').onclick = () => { if (confirm('この録画を破棄しますか?')) closeSaveDlg(); };
+
+/* ---- 設定ドロワー ---- */
+$('btnSettings').onclick = () => $('settingsDrawer').classList.toggle('hidden');
+$('btnCloseSettings').onclick = () => $('settingsDrawer').classList.add('hidden');
+function bindRange(id, key, fmt) {
+  $(id).oninput = e => {
+    settings[key] = Number(e.target.value);
+    persistSettings();
+    applySettings();
+  };
+}
+bindRange('sSpeed', 'speed');
+bindRange('sFont', 'fontSize');
+bindRange('sPanel', 'panelH');
+bindRange('sOpacity', 'bgOpacity');
+$('sBg').oninput = e => { settings.bgColor = e.target.value; persistSettings(); applySettings(); };
+$('sText').oninput = e => { settings.textColor = e.target.value; persistSettings(); applySettings(); };
+$('btnResetColor').onclick = () => {
+  settings.bgColor = DEFAULTS.bgColor; settings.textColor = DEFAULTS.textColor;
+  settings.bgOpacity = DEFAULTS.bgOpacity;
+  persistSettings(); applySettings();
+};
+$('sTarget').onchange = e => { settings.targetSec = Math.max(0, Number(e.target.value) || 0); persistSettings(); applySettings(); };
+$('sCount').onchange = e => { settings.countdown = e.target.checked; persistSettings(); };
+
+/* ---- キーボード操作(PC用) ---- */
+window.addEventListener('keydown', e => {
+  if (stage.classList.contains('hidden')) return;
+  if (e.target.matches('input,textarea')) return;
+  if (e.code === 'Space') { e.preventDefault(); if (mode === 'practice' || mode === 'recording') setPlaying(!playing); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); nudge(-60); }
+  else if (e.key === 'ArrowDown') { e.preventDefault(); nudge(60); }
+  else if (e.key === 'Home') { e.preventDefault(); toTop(); }
+});
+
+/* ---- 画面スリープ防止 ---- */
+async function requestWakeLock() {
+  try { wakeLockObj = await navigator.wakeLock.request('screen'); } catch (e) {}
+}
+function releaseWakeLock() {
+  if (wakeLockObj) { wakeLockObj.release().catch(() => {}); wakeLockObj = null; }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && (mode === 'practice' || mode === 'recording')) requestWakeLock();
+});
+
+window.addEventListener('resize', () => { if (!stage.classList.contains('hidden')) applySettings(); });
+window.addEventListener('beforeunload', e => {
+  if (mode === 'recording') { e.preventDefault(); e.returnValue = ''; }
+});
+
+renderList();
+</script>
+</body>
+</html>
